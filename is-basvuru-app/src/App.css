@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+/* Kaydırma çubuğunun genel genişliği ve yüksekliği (İnce ve zarif) */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+/* Kaydırma çubuğunun arka planı (Track) - Modalın koyu grisine uygun */
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(31, 41, 55, 0.4); /* bg-gray-800'ün hafif saydam hali */
+  border-radius: 10px;
+  margin-block: 4px; /* Yukarıdan ve aşağıdan hafif boşluk */
+}
+
+/* Kaydırma çubuğunun tutamacı (Thumb) - Normal hali */
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #4b5563; /* gray-600 */
+  border-radius: 10px;
+}
+
+/* Tutamacın üzerine gelindiğindeki (Hover) hali - Tema rengimizle parlasın! */
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #10b981; /* emerald-500 rengi. İstersen #f59e0b (amber) de yapabilirsin */
+}
+
+/* Firefox Desteği (Firefox webkit desteklemez, bu kod onun içindir) */
+.custom-scrollbar {
+  scrollbar-width: thin; /* İnce bar */
+  scrollbar-color: #4b5563 transparent; /* Tutamaç rengi ve Arka plan */
+}

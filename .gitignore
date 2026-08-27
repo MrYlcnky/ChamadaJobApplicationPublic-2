@@ -1,0 +1,57 @@
+# Node
+**/node_modules/
+**/dist/
+**/.vite/
+
+# .NET
+**/bin/
+**/obj/
+
+# Env
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+
+# Visual Studio
+.vs/
+**/.vs/
+
+# Build
+bin/
+obj/
+**/bin/
+**/obj/
+
+# Visual Studio user files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Logs
+Logs/
+**/Logs/
+*.log
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Node
+node_modules/
+dist/
+.env
+.env.*
+
+# Keep example env files if used
+!.env.example
+
+# ASP.NET development settings
+appsettings.Development.json
