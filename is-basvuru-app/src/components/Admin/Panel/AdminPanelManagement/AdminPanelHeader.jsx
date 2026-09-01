@@ -116,14 +116,22 @@ export default function AdminPanelHeader({
       id: "all",
       label: "TÜM ŞUBELER",
     },
-    {
-      id: "GİRNE",
-      label: "GİRNE",
-    },
-    {
-      id: "PRESTİGE",
-      label: "PRESTİGE",
-    },
+
+    ...(lookups?.subeler || []).flatMap((sube) => {
+      const subeAdi = String(sube);
+      const kisaAd = subeAdi.replace(/^Chamada\s+/i, "");
+
+      return [
+        {
+          id: `selected:${subeAdi}`,
+          label: kisaAd.toUpperCase(),
+        },
+        {
+          id: `only:${subeAdi}`,
+          label: `SADECE ${kisaAd.toUpperCase()}`,
+        },
+      ];
+    }),
   ];
 
   return (
@@ -598,10 +606,8 @@ export default function AdminPanelHeader({
                   };
 
                   setFilters(clearedFilters);
-
-                  setActiveFilters({
-                    ...clearedFilters,
-                  });
+                  setActiveFilters(clearedFilters);
+                  setIsFilterOpen(false);
                 }}
               />
             </div>

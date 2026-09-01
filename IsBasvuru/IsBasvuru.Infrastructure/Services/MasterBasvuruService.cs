@@ -229,6 +229,1121 @@ namespace IsBasvuru.Infrastructure.Services
             return ServiceResponse<List<MasterBasvuruListDto>>.SuccessResult(mappedList);
         }
 
+        public async Task<ServiceResponse<PagedResponse<List<MasterBasvuruOzetListDto>>>> GetAllOzetAsync( int roleId, int? subeId, int? departmanId, int? alanId, MasterBasvuruOzetFiltreDto filtre)
+        {
+            filtre ??= new MasterBasvuruOzetFiltreDto();
+
+            // =====================================================
+            // PAGINATION GÜVENLİĞİ
+            // =====================================================
+
+            var pageNumber = filtre.PageNumber < 1
+                ? 1
+                : filtre.PageNumber;
+
+            var pageSize = filtre.PageSize < 1
+                ? 10
+                : Math.Min(filtre.PageSize, 100);
+
+            var query = _context.MasterBasvurular
+                .AsNoTracking()
+                .AsQueryable();
+
+            // =====================================================
+            // 1. YETKİ / SCOPE
+            // =====================================================
+
+            if (roleId != SUPER_ADMIN_ROLE_ID)
+            {
+                // =================================================
+                // DEPARTMAN MÜDÜRÜ
+                // =================================================
+
+                if (roleId == 6)
+                {
+                    if (!subeId.HasValue || !departmanId.HasValue)
+                    {
+                        return ServiceResponse<
+                            PagedResponse<List<MasterBasvuruOzetListDto>>
+                        >.FailureResult(
+                            "Başvuruları görüntüleme yetkiniz bulunmamaktadır.");
+                    }
+
+                    query = query.Where(x =>
+                        x.BasvuruSevkleri.Any(s =>
+                            s.SubeId == subeId.Value &&
+                            s.Departman != null &&
+                            s.Departman.MasterDepartmanId == departmanId.Value &&
+                            s.SevkDurumu != SevkDurumu.BaskaDepartmanOnayladi
+                        )
+                    );
+                }
+
+                // =================================================
+                // GENEL MÜDÜR
+                // =================================================
+
+                else if (roleId == 5)
+                {
+                    if (!subeId.HasValue || !alanId.HasValue)
+                    {
+                        return ServiceResponse<
+                            PagedResponse<List<MasterBasvuruOzetListDto>>
+                        >.FailureResult(
+                            "Başvuruları görüntüleme yetkiniz bulunmamaktadır.");
+                    }
+
+                    query = query
+                        .Where(x =>
+                            x.BasvuruSevkleri.Any(s =>
+                                (
+                                    s.SevkDurumu == SevkDurumu.Onaylandi ||
+                                    s.SevkDurumu ==
+                                        SevkDurumu.OnayUstAsamadaIptalEdildi
+                                ) &&
+                                s.SubeId == subeId.Value &&
+                                s.Departman != null &&
+                                s.Departman.SubeAlan != null &&
+                                s.Departman.SubeAlan.MasterAlanId == alanId.Value
+                            )
+                        )
+                        .Where(x =>
+                            x.BasvuruOnayAsamasi >=
+                                BasvuruOnayAsamasi.Genel_Mudur_Onayi ||
+                            x.BasvuruDurum == BasvuruDurum.Reddedildi ||
+                            x.BasvuruDurum == BasvuruDurum.RevizeTalebi
+                        );
+                }
+
+                // =================================================
+                // MALİ İŞLER MÜDÜRÜ
+                // =================================================
+
+                else if (roleId == 7)
+                {
+                    if (!subeId.HasValue)
+                    {
+                        return ServiceResponse<
+                            PagedResponse<List<MasterBasvuruOzetListDto>>
+                        >.FailureResult(
+                            "Başvuruları görüntüleme yetkiniz bulunmamaktadır.");
+                    }
+
+                    query = query
+                        .Where(x =>
+                            x.BasvuruSevkleri.Any(s =>
+                                (
+                                    s.SevkDurumu == SevkDurumu.Onaylandi ||
+                                    s.SevkDurumu ==
+                                        SevkDurumu.OnayUstAsamadaIptalEdildi
+                                ) &&
+                                s.SubeId == subeId.Value
+                            )
+                        )
+                        .Where(x =>
+                            x.BasvuruOnayAsamasi >=
+                                BasvuruOnayAsamasi.Mali_Isler_Mudur_Onayi ||
+                            x.BasvuruDurum == BasvuruDurum.Reddedildi ||
+                            x.BasvuruDurum == BasvuruDurum.RevizeTalebi
+                        );
+                }
+
+                // =================================================
+                // ADMIN
+                // =================================================
+
+                else if (roleId == 2)
+                {
+                    // Global erişim.
+                }
+
+                // =================================================
+                // IK ADMIN / IK
+                // =================================================
+
+                else if (roleId == 3 || roleId == 4)
+                {
+                    if (subeId.HasValue)
+                    {
+                        query = query.Where(x =>
+                            x.Personel != null &&
+                            x.Personel.IsBasvuruDetay != null &&
+                            x.Personel.IsBasvuruDetay.BasvuruSubeler.Any(bs =>
+                                bs.SubeId == subeId.Value
+                            )
+                        );
+                    }
+                }
+
+                // =================================================
+                // TANIMSIZ ROL
+                // =================================================
+
+                else
+                {
+                    return ServiceResponse<
+                        PagedResponse<List<MasterBasvuruOzetListDto>>
+                    >.FailureResult(
+                        "Başvuruları görüntüleme yetkiniz bulunmamaktadır.");
+                }
+            }
+
+            // =====================================================
+            // 2. GENEL ARAMA
+            // =====================================================
+
+            if (!string.IsNullOrWhiteSpace(filtre.Search))
+            {
+                var searchTerms = filtre.Search
+                    .Trim()
+                    .Split(
+                        ' ',
+                        StringSplitOptions.RemoveEmptyEntries |
+                        StringSplitOptions.TrimEntries
+                    );
+
+                foreach (var term in searchTerms)
+                {
+                    var searchTerm = term;
+
+                    query = query.Where(x =>
+                        x.Personel != null &&
+                        x.Personel.KisiselBilgiler != null &&
+                        (
+                            EF.Functions.Like(
+                                x.Personel.KisiselBilgiler.Ad,
+                                $"%{searchTerm}%"
+                            )
+                            ||
+                            EF.Functions.Like(
+                                x.Personel.KisiselBilgiler.Soyadi,
+                                $"%{searchTerm}%"
+                            )
+                        )
+                    );
+                }
+            }
+
+            // =====================================================
+            // 3. ŞUBE FİLTRESİ
+            // =====================================================
+            if (!string.IsNullOrWhiteSpace(filtre.Sube))
+            {
+                var sube = filtre.Sube.Trim();
+
+                if (filtre.SadeceSube == true)
+                {
+                    query = query.Where(x =>
+                        x.Personel != null &&
+                        x.Personel.IsBasvuruDetay != null &&
+
+                        // Seçilen şube mutlaka var
+                        x.Personel.IsBasvuruDetay.BasvuruSubeler.Any(bs =>
+                            bs.Sube != null &&
+                            bs.Sube.SubeAdi == sube
+                        )
+
+                        &&
+
+                        // Başka hiçbir şube seçilmemiş
+                        !x.Personel.IsBasvuruDetay.BasvuruSubeler.Any(bs =>
+                            bs.Sube != null &&
+                            bs.Sube.SubeAdi != sube
+                        )
+                    );
+                }
+                else
+                {
+                    query = query.Where(x =>
+                        x.Personel != null &&
+                        x.Personel.IsBasvuruDetay != null &&
+                        x.Personel.IsBasvuruDetay.BasvuruSubeler.Any(bs =>
+                            bs.Sube != null &&
+                            bs.Sube.SubeAdi == sube
+                        )
+                    );
+                }
+            }
+
+            // =====================================================
+            // 4. ALAN FİLTRESİ
+            // =====================================================
+
+            if (!string.IsNullOrWhiteSpace(filtre.Alan))
+            {
+                var alan = filtre.Alan.Trim();
+
+                query = query.Where(x =>
+                    x.Personel != null &&
+                    x.Personel.IsBasvuruDetay != null &&
+                    x.Personel.IsBasvuruDetay.BasvuruAlanlar.Any(a =>
+                        a.SubeAlan != null &&
+                        a.SubeAlan.MasterAlan != null &&
+                        a.SubeAlan.MasterAlan.MasterAlanAdi == alan
+                    )
+                );
+            }
+
+            // =====================================================
+            // 5. DEPARTMAN FİLTRESİ
+            // =====================================================
+
+            if (!string.IsNullOrWhiteSpace(filtre.Departman))
+            {
+                var departman = filtre.Departman.Trim();
+
+                query = query.Where(x =>
+                    x.Personel != null &&
+                    x.Personel.IsBasvuruDetay != null &&
+                    x.Personel.IsBasvuruDetay.BasvuruDepartmanlar.Any(d =>
+                        d.Departman != null &&
+                        d.Departman.MasterDepartman != null &&
+                        d.Departman.MasterDepartman.MasterDepartmanAdi == departman
+                    )
+                );
+            }
+
+            // =====================================================
+            // 6. POZİSYON FİLTRESİ
+            // =====================================================
+
+            if (!string.IsNullOrWhiteSpace(filtre.Pozisyon))
+            {
+                var pozisyon = filtre.Pozisyon.Trim();
+
+                query = query.Where(x =>
+                    x.Personel != null &&
+                    x.Personel.IsBasvuruDetay != null &&
+                    x.Personel.IsBasvuruDetay.BasvuruPozisyonlar.Any(p =>
+                        p.DepartmanPozisyon != null &&
+                        p.DepartmanPozisyon.MasterPozisyon != null &&
+                        p.DepartmanPozisyon.MasterPozisyon.MasterPozisyonAdi ==
+                            pozisyon
+                    )
+                );
+            }
+
+            // =====================================================
+            // 7. DURUM FİLTRESİ
+            // =====================================================
+
+            if (filtre.Durumlar != null &&
+                filtre.Durumlar.Count > 0)
+            {
+                query = query.Where(x =>
+                    filtre.Durumlar.Contains(x.BasvuruDurum)
+                );
+            }
+
+            // =====================================================
+            // 8. AŞAMA FİLTRESİ
+            // =====================================================
+
+            if (filtre.Asama.HasValue)
+            {
+                var asama = filtre.Asama.Value;
+
+                /*
+                 * Aşama sekmeleri sadece aktif süreci gösterir.
+                 *
+                 * Onaylandı  -> ONAYLI sekmesi
+                 * Reddedildi -> RED sekmesi
+                 * Revize     -> REVİZE sekmesi
+                 * Tam red    -> TAMAMEN REDDEDİLEN sekmesi
+                 *
+                 * Bu nedenle bunları aşama sekmelerine sokmuyoruz.
+                 */
+
+                query = query.Where(x =>
+                    !x.TamamenReddedildiMi &&
+                    (
+                        x.BasvuruDurum == BasvuruDurum.YeniBasvuru ||
+                        x.BasvuruDurum == BasvuruDurum.DevamEdiyor
+                    ) &&
+                    x.BasvuruOnayAsamasi == asama
+                );
+
+                /*
+                 * İK / IK Admin:
+                 *
+                 * İlk değerlendirmede henüz sevk bulunmayabilir.
+                 *
+                 * Fakat 2+ aşamalarda en az bir şubede
+                 * reddedilmemiş bir sevk/süreç bulunmalı.
+                 */
+                if (
+                    (roleId == 3 || roleId == 4) &&
+                    subeId.HasValue &&
+                    asama != BasvuruOnayAsamasi.Ik_Ilk_Degerlendirme
+                )
+                {
+                    query = query.Where(x =>
+                        x.BasvuruSevkleri.Any(s =>
+                            s.SevkDurumu != SevkDurumu.Reddedildi
+                        )
+                    );
+                }
+            }
+
+            // =====================================================
+            // 9. TAMAMEN REDDEDİLDİ
+            // =====================================================
+
+            if (filtre.TamamenReddedildiMi.HasValue)
+            {
+                query = query.Where(x =>
+                    x.TamamenReddedildiMi ==
+                    filtre.TamamenReddedildiMi.Value
+                );
+            }
+
+            // =====================================================
+            // 10. BAŞVURU TARİHİ
+            // =====================================================
+
+            if (filtre.BaslangicTarihi.HasValue)
+            {
+                var baslangic =
+                    filtre.BaslangicTarihi.Value.Date;
+
+                query = query.Where(x =>
+                    x.BasvuruTarihi >= baslangic
+                );
+            }
+
+            if (filtre.BitisTarihi.HasValue)
+            {
+                var bitisExclusive =
+                    filtre.BitisTarihi.Value.Date.AddDays(1);
+
+                query = query.Where(x =>
+                    x.BasvuruTarihi < bitisExclusive
+                );
+            }
+
+            // =====================================================
+            // 11. CİNSİYET
+            // =====================================================
+
+            if (filtre.Cinsiyet.HasValue)
+            {
+                query = query.Where(x =>
+                    x.Personel != null &&
+                    x.Personel.KisiselBilgiler != null &&
+                    (int)x.Personel.KisiselBilgiler.Cinsiyet ==
+                        filtre.Cinsiyet.Value
+                );
+            }
+
+            // =====================================================
+            // 12. YAŞ
+            // =====================================================
+
+            if (filtre.YasMin.HasValue)
+            {
+                var enGencDogumTarihi =
+                    DateTime.Today.AddYears(
+                        -filtre.YasMin.Value
+                    );
+
+                query = query.Where(x =>
+                    x.Personel != null &&
+                    x.Personel.KisiselBilgiler != null &&
+                    x.Personel.KisiselBilgiler.DogumTarihi <=
+                        enGencDogumTarihi
+                );
+            }
+
+            if (filtre.YasMax.HasValue)
+            {
+                var enEskiDogumTarihi =
+                    DateTime.Today
+                        .AddYears(-(filtre.YasMax.Value + 1))
+                        .AddDays(1);
+
+                query = query.Where(x =>
+                    x.Personel != null &&
+                    x.Personel.KisiselBilgiler != null &&
+                    x.Personel.KisiselBilgiler.DogumTarihi >=
+                        enEskiDogumTarihi
+                );
+            }
+
+            // =====================================================
+            // 13. EĞİTİM
+            // =====================================================
+
+            if (filtre.EgitimSeviyesi.HasValue)
+            {
+                query = query.Where(x =>
+                    x.Personel != null &&
+                    x.Personel.EgitimBilgileri.Any(e =>
+                        (int)e.EgitimSeviyesi ==
+                        filtre.EgitimSeviyesi.Value
+                    )
+                );
+            }
+
+            // =====================================================
+            // 14. İŞE BAŞLAMA TARİHİ VAR / YOK
+            // =====================================================
+
+            if (filtre.IseBaslamaTarihiVarMi.HasValue)
+            {
+                if (filtre.IseBaslamaTarihiVarMi.Value)
+                {
+                    query = query.Where(x =>
+                        _context.Set<GorevAtamaDetay>()
+                            .Any(g =>
+                                g.PersonelId == x.PersonelId
+                            )
+                    );
+                }
+                else
+                {
+                    query = query.Where(x =>
+                        !_context.Set<GorevAtamaDetay>()
+                            .Any(g =>
+                                g.PersonelId == x.PersonelId
+                            )
+                    );
+                }
+            }
+
+            // =====================================================
+            // 15. TOPLAM KAYIT
+            // =====================================================
+
+            var totalRecords =
+                await query.CountAsync();
+
+            // =====================================================
+            // 16. SERVER-SIDE TEK KOLON SIRALAMA
+            // =====================================================
+
+            var sortBy = string.IsNullOrWhiteSpace(filtre.SortBy)
+                ? "date"
+                : filtre.SortBy.Trim().ToLowerInvariant();
+
+            var descending = filtre.SortDescending;
+
+            // Sadece izin verilen kolonlarda sıralama yapılabilir.
+            var allowedSortFields = new HashSet<string>
+{
+    "id",
+    "ad",
+    "soyad",
+    "date",
+    "startdate"
+};
+
+            // Geçersiz bir SortBy gelirse güvenli varsayılan:
+            // Başvuru Tarihi DESC
+            if (!allowedSortFields.Contains(sortBy))
+            {
+                sortBy = "date";
+                descending = true;
+            }
+
+            IOrderedQueryable<MasterBasvuru> orderedQuery;
+
+            orderedQuery = sortBy switch
+            {
+                // =================================================
+                // NO / MASTER BAŞVURU ID
+                // =================================================
+                "id" => descending
+                    ? query
+                        .OrderByDescending(x => x.Id)
+                    : query
+                        .OrderBy(x => x.Id),
+
+                // =================================================
+                // AD
+                // =================================================
+                "ad" => descending
+                    ? query
+                        .OrderByDescending(x =>
+                            (x.Personel!.KisiselBilgiler!.Ad ?? string.Empty).Trim()
+                        )
+                        .ThenByDescending(x => x.Id)
+                    : query
+                        .OrderBy(x =>
+                            (x.Personel!.KisiselBilgiler!.Ad ?? string.Empty).Trim()
+                        )
+                        .ThenBy(x => x.Id),
+
+                // =================================================
+                // SOYAD
+                // =================================================
+                "soyad" => descending
+                    ? query
+                        .OrderByDescending(x =>
+                            (x.Personel!.KisiselBilgiler!.Soyadi ?? string.Empty).Trim()
+                        )
+                        .ThenByDescending(x => x.Id)
+                    : query
+                        .OrderBy(x =>
+                            (x.Personel!.KisiselBilgiler!.Soyadi ?? string.Empty).Trim()
+                        )
+                        .ThenBy(x => x.Id),
+
+                // =================================================
+                // BAŞVURU TARİHİ
+                // =================================================
+                "date" => descending
+                    ? query
+                        .OrderByDescending(x => x.BasvuruTarihi)
+                        .ThenByDescending(x => x.Id)
+                    : query
+                        .OrderBy(x => x.BasvuruTarihi)
+                        .ThenBy(x => x.Id),
+
+                // =================================================
+                // İŞE BAŞLAMA TARİHİ
+                // =================================================
+                "startdate" => descending
+                    ? query
+                        // Tarihi olan kayıtlar önce.
+                        .OrderByDescending(x =>
+                            _context.Set<GorevAtamaDetay>()
+                                .Any(g =>
+                                    g.PersonelId == x.PersonelId
+                                )
+                        )
+                        // En son görev atamasının başlangıç tarihine göre DESC.
+                        .ThenByDescending(x =>
+                            _context.Set<GorevAtamaDetay>()
+                                .Where(g =>
+                                    g.PersonelId == x.PersonelId
+                                )
+                                .OrderByDescending(g => g.Id)
+                                .Select(g =>
+                                    (DateTime?)g.BaslangicTarihi
+                                )
+                                .FirstOrDefault()
+                        )
+                        .ThenByDescending(x => x.Id)
+                    : query
+                        // Tarihi olmayan "-" kayıtlar yine en sona kalsın.
+                        .OrderByDescending(x =>
+                            _context.Set<GorevAtamaDetay>()
+                                .Any(g =>
+                                    g.PersonelId == x.PersonelId
+                                )
+                        )
+                        // En son görev atamasının başlangıç tarihine göre ASC.
+                        .ThenBy(x =>
+                            _context.Set<GorevAtamaDetay>()
+                                .Where(g =>
+                                    g.PersonelId == x.PersonelId
+                                )
+                                .OrderByDescending(g => g.Id)
+                                .Select(g =>
+                                    (DateTime?)g.BaslangicTarihi
+                                )
+                                .FirstOrDefault()
+                        )
+                        .ThenBy(x => x.Id),
+
+                // =================================================
+                // GÜVENLİ DEFAULT
+                // =================================================
+                _ => query
+                    .OrderByDescending(x => x.BasvuruTarihi)
+                    .ThenByDescending(x => x.Id)
+            };
+
+            // =====================================================
+            // 17. SADECE İSTENEN SAYFANIN TEMEL VERİSİ
+            // =====================================================
+
+            var list = await orderedQuery
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .Select(x => new MasterBasvuruOzetListDto
+                {
+                    Id = x.Id,
+
+                    PersonelId = x.PersonelId,
+
+                    Ad =
+                        x.Personel != null &&
+                        x.Personel.KisiselBilgiler != null
+                            ? x.Personel.KisiselBilgiler.Ad
+                            : string.Empty,
+
+                    Soyad =
+                        x.Personel != null &&
+                        x.Personel.KisiselBilgiler != null
+                            ? x.Personel.KisiselBilgiler.Soyadi
+                            : string.Empty,
+
+                    FotografYolu =
+                        x.Personel != null &&
+                        x.Personel.KisiselBilgiler != null
+                            ? x.Personel.KisiselBilgiler.VesikalikFotograf ?? string.Empty
+                            : string.Empty,
+
+                    DogumTarihi =
+                        x.Personel != null &&
+                        x.Personel.KisiselBilgiler != null
+                            ? x.Personel.KisiselBilgiler.DogumTarihi
+                            : null,
+
+                    Cinsiyet =
+                        x.Personel != null &&
+                        x.Personel.KisiselBilgiler != null
+                            ? (int?)x.Personel.KisiselBilgiler.Cinsiyet
+                            : null,
+
+                    BasvuruTarihi = x.BasvuruTarihi,
+
+                    BasvuruDurum = x.BasvuruDurum,
+
+                    BasvuruOnayAsamasi = x.BasvuruOnayAsamasi,
+
+                    TamamenReddedildiMi = x.TamamenReddedildiMi,
+
+                    IseBaslamaTarihi = null
+                })
+                .ToListAsync();
+
+            foreach (var item in list)
+            {
+                item.BasvuruDurumAdi =
+                    item.BasvuruDurum.ToString();
+            }
+
+            // =====================================================
+            // SAYFA BOŞSA BATCH QUERY ÇALIŞTIRMA
+            // =====================================================
+
+            if (list.Count == 0)
+            {
+                var emptyPaged =
+                    new PagedResponse<List<MasterBasvuruOzetListDto>>(
+                        list,
+                        pageNumber,
+                        pageSize,
+                        totalRecords
+                    );
+
+                return ServiceResponse<
+                    PagedResponse<List<MasterBasvuruOzetListDto>>
+                >.SuccessResult(emptyPaged);
+            }
+
+            var basvuruIdleri = list
+                .Select(x => x.Id)
+                .Distinct()
+                .ToList();
+
+            var personelIdleri = list
+                .Select(x => x.PersonelId)
+                .Distinct()
+                .ToList();
+
+            // =====================================================
+            // 18. ŞUBELER
+            // =====================================================
+
+            var subeRows = await _context.MasterBasvurular
+                .AsNoTracking()
+                .Where(x =>
+                    basvuruIdleri.Contains(x.Id)
+                )
+                .SelectMany(x =>
+                    x.Personel!
+                        .IsBasvuruDetay!
+                        .BasvuruSubeler
+                        .Select(bs => new
+                        {
+                            BasvuruId = x.Id,
+
+                            SubeId =
+                                bs.SubeId,
+
+                            SubeAdi =
+                                bs.Sube != null
+                                    ? bs.Sube.SubeAdi
+                                    : string.Empty
+                        })
+                )
+                .ToListAsync();
+
+            var subeLookup = subeRows
+                .GroupBy(x => x.BasvuruId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => new
+                    {
+                        Adlar = g
+                            .Select(x => x.SubeAdi)
+                            .Where(x =>
+                                !string.IsNullOrWhiteSpace(x)
+                            )
+                            .Distinct()
+                            .ToList(),
+
+                        Idler = g
+                            .Select(x => x.SubeId)
+                            .Distinct()
+                            .ToList()
+                    }
+                );
+
+            // =====================================================
+            // 19. ALANLAR
+            // =====================================================
+
+            var alanRows = await _context.MasterBasvurular
+                .AsNoTracking()
+                .Where(x =>
+                    basvuruIdleri.Contains(x.Id)
+                )
+                .SelectMany(x =>
+                    x.Personel!
+                        .IsBasvuruDetay!
+                        .BasvuruAlanlar
+                        .Select(a => new
+                        {
+                            BasvuruId = x.Id,
+
+                            AlanAdi =
+                                a.SubeAlan != null &&
+                                a.SubeAlan.MasterAlan != null
+                                    ? a.SubeAlan.MasterAlan.MasterAlanAdi
+                                    : string.Empty
+                        })
+                )
+                .ToListAsync();
+
+            var alanLookup = alanRows
+                .GroupBy(x => x.BasvuruId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g
+                        .Select(x => x.AlanAdi)
+                        .Where(x =>
+                            !string.IsNullOrWhiteSpace(x)
+                        )
+                        .Distinct()
+                        .ToList()
+                );
+
+            // =====================================================
+            // 20. DEPARTMANLAR
+            // =====================================================
+
+            var departmanRows = await _context.MasterBasvurular
+                .AsNoTracking()
+                .Where(x =>
+                    basvuruIdleri.Contains(x.Id)
+                )
+                .SelectMany(x =>
+                    x.Personel!
+                        .IsBasvuruDetay!
+                        .BasvuruDepartmanlar
+                        .Select(d => new
+                        {
+                            BasvuruId =
+                                x.Id,
+
+                            DepartmanId =
+                                d.DepartmanId,
+
+                            DepartmanAdi =
+                                d.Departman != null &&
+                                d.Departman.MasterDepartman != null
+                                    ? d.Departman
+                                        .MasterDepartman
+                                        .MasterDepartmanAdi
+                                    : string.Empty
+                        })
+                )
+                .ToListAsync();
+
+            var departmanLookup = departmanRows
+                .GroupBy(x => x.BasvuruId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => new
+                    {
+                        Adlar = g
+                            .Select(x => x.DepartmanAdi)
+                            .Where(x =>
+                                !string.IsNullOrWhiteSpace(x)
+                            )
+                            .Distinct()
+                            .ToList(),
+
+                        Idler = g
+                            .Select(x => x.DepartmanId)
+                            .Distinct()
+                            .ToList()
+                    }
+                );
+
+            // =====================================================
+            // 21. POZİSYONLAR
+            // =====================================================
+
+            var pozisyonRows = await _context.MasterBasvurular
+                .AsNoTracking()
+                .Where(x =>
+                    basvuruIdleri.Contains(x.Id)
+                )
+                .SelectMany(x =>
+                    x.Personel!
+                        .IsBasvuruDetay!
+                        .BasvuruPozisyonlar
+                        .Select(p => new
+                        {
+                            BasvuruId =
+                                x.Id,
+
+                            PozisyonAdi =
+                                p.DepartmanPozisyon != null &&
+                                p.DepartmanPozisyon.MasterPozisyon != null
+                                    ? p.DepartmanPozisyon
+                                        .MasterPozisyon
+                                        .MasterPozisyonAdi
+                                    : string.Empty
+                        })
+                )
+                .ToListAsync();
+
+            var pozisyonLookup = pozisyonRows
+                .GroupBy(x => x.BasvuruId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g
+                        .Select(x => x.PozisyonAdi)
+                        .Where(x =>
+                            !string.IsNullOrWhiteSpace(x)
+                        )
+                        .Distinct()
+                        .ToList()
+                );
+
+            // =====================================================
+            // 22. EĞİTİM
+            // =====================================================
+
+            var egitimRows = await _context.MasterBasvurular
+                .AsNoTracking()
+                .Where(x =>
+                    basvuruIdleri.Contains(x.Id)
+                )
+                .SelectMany(x =>
+                    x.Personel!
+                        .EgitimBilgileri
+                        .Select(e => new
+                        {
+                            BasvuruId =
+                                x.Id,
+
+                            EgitimSeviyesi =
+                                (int)e.EgitimSeviyesi
+                        })
+                )
+                .ToListAsync();
+
+            var egitimLookup = egitimRows
+                .GroupBy(x => x.BasvuruId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g
+                        .Select(x => x.EgitimSeviyesi)
+                        .Distinct()
+                        .ToList()
+                );
+
+            // =====================================================
+            // 23. SEVKLER
+            // =====================================================
+
+            var sevkRows = await _context.BasvuruSevkleri
+                .AsNoTracking()
+                .Where(s =>
+                    basvuruIdleri.Contains(
+                        s.MasterBasvuruId
+                    )
+                )
+                .Select(s => new
+                {
+                    s.MasterBasvuruId,
+
+                    s.SubeId,
+
+                    SubeAdi =
+                        s.Sube != null
+                            ? s.Sube.SubeAdi
+                            : string.Empty,
+
+                    SevkDurumu =
+                        (int)s.SevkDurumu,
+
+                    s.DepartmanId,
+
+                    MasterDepartmanId =
+                        s.Departman != null
+                            ? s.Departman.MasterDepartmanId
+                            : 0,
+
+                    MasterAlanId =
+                        s.Departman != null &&
+                        s.Departman.SubeAlan != null
+                            ? s.Departman.SubeAlan.MasterAlanId
+                            : 0
+                })
+                .ToListAsync();
+
+            var sevkLookup = sevkRows
+                .GroupBy(x => x.MasterBasvuruId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g
+                        .Select(s =>
+                            new MasterBasvuruOzetSevkDto
+                            {
+                                SubeId =
+                                    s.SubeId,
+
+                                SubeAdi =
+                                    s.SubeAdi,
+
+                                SevkDurumu =
+                                    s.SevkDurumu,
+
+                                DepartmanId =
+                                    s.DepartmanId,
+
+                                MasterDepartmanId =
+                                    s.MasterDepartmanId,
+
+                                MasterAlanId =
+                                    s.MasterAlanId
+                            }
+                        )
+                        .ToList()
+                );
+
+            // =====================================================
+            // 24. İŞE BAŞLAMA TARİHLERİ
+            // =====================================================
+
+            var atamaRows = await _context
+                .Set<GorevAtamaDetay>()
+                .AsNoTracking()
+                .Where(g =>
+                    personelIdleri.Contains(g.PersonelId)
+                )
+                .Select(g => new
+                {
+                    g.Id,
+                    g.PersonelId,
+                    g.BaslangicTarihi
+                })
+                .ToListAsync();
+
+            var atamaLookup = atamaRows
+                .GroupBy(x => x.PersonelId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g
+                        .OrderByDescending(x => x.Id)
+                        .Select(x => x.BaslangicTarihi)
+                        .First()
+                );
+
+            // =====================================================
+            // 25. DTO'LARA BAĞLA
+            // =====================================================
+
+            foreach (var item in list)
+            {
+                if (subeLookup.TryGetValue(
+                    item.Id,
+                    out var subeBilgileri))
+                {
+                    item.Subeler =
+                        subeBilgileri.Adlar;
+
+                    item.BasvuruSubeIdleri =
+                        subeBilgileri.Idler;
+                }
+
+                if (alanLookup.TryGetValue(
+                    item.Id,
+                    out var alanlar))
+                {
+                    item.Alanlar =
+                        alanlar;
+                }
+
+                if (departmanLookup.TryGetValue(
+                    item.Id,
+                    out var departmanBilgileri))
+                {
+                    item.Departmanlar =
+                        departmanBilgileri.Adlar;
+
+                    item.BasvuruDepartmanIdleri =
+                        departmanBilgileri.Idler;
+                }
+
+                if (pozisyonLookup.TryGetValue(
+                    item.Id,
+                    out var pozisyonlar))
+                {
+                    item.Pozisyonlar =
+                        pozisyonlar;
+                }
+
+                if (egitimLookup.TryGetValue(
+                    item.Id,
+                    out var egitimler))
+                {
+                    item.EgitimSeviyeleri =
+                        egitimler;
+                }
+
+                if (sevkLookup.TryGetValue(
+                    item.Id,
+                    out var sevkler))
+                {
+                    item.Sevkler =
+                        sevkler;
+                }
+
+                if (atamaLookup.TryGetValue(
+                    item.PersonelId,
+                    out var baslangicTarihi))
+                {
+                    item.IseBaslamaTarihi =
+                        baslangicTarihi;
+                }
+            }
+
+            // =====================================================
+            // 26. PAGED RESPONSE
+            // =====================================================
+
+            var pagedResponse =
+                new PagedResponse<List<MasterBasvuruOzetListDto>>(
+                    list,
+                    pageNumber,
+                    pageSize,
+                    totalRecords
+                );
+
+            return ServiceResponse<
+                PagedResponse<List<MasterBasvuruOzetListDto>>
+            >.SuccessResult(pagedResponse);
+        }
+
         public async Task<ServiceResponse<MasterBasvuruListDto>> GetByIdAsync(int id, int roleId, int? subeId, int? departmanId, int? alanId)
         {
             var query = _context.MasterBasvurular.AsQueryable();
@@ -1300,10 +2415,8 @@ namespace IsBasvuru.Infrastructure.Services
                                     "(Üst aşama reddiyle geçici iptal edilen departman onayı tekrar aktif edildi.)";
                             }
                         }
-                    }
-
-                    if (entity.BasvuruOnayAsamasi == BasvuruOnayAsamasi.Genel_Mudur_Onayi &&
-      entity.BasvuruDurum == BasvuruDurum.DevamEdiyor)
+                      }
+                            if (entity.BasvuruOnayAsamasi == BasvuruOnayAsamasi.Genel_Mudur_Onayi && entity.BasvuruDurum == BasvuruDurum.DevamEdiyor)
                     {
                         var onayliSevkVarMi = entity.BasvuruSevkleri
                             .Any(s => s.SevkDurumu == SevkDurumu.Onaylandi);

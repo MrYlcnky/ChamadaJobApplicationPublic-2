@@ -11,9 +11,11 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 // --- PORTAL TOOLTIP ---
-// Tablo hücreleri içindeki kısıtlı alandan taşan listeleri sayfanın en üst katmanında göstermek için.
+// Tablo hücreleri içindeki kısıtlı alandan taşan listeleri
+// sayfanın en üst katmanında göstermek için.
 const PortalTooltip = ({ children, coords, visible }) => {
   if (!visible) return null;
+
   return createPortal(
     <div
       className="fixed z-9999 bg-white border border-gray-200 shadow-2xl rounded-lg p-3 animate-in fade-in zoom-in-95 duration-200"
@@ -25,6 +27,7 @@ const PortalTooltip = ({ children, coords, visible }) => {
       }}
     >
       <div className="absolute -top-1.5 left-4 w-3 h-3 bg-white border-t border-l border-gray-200 transform rotate-45"></div>
+
       {children}
     </div>,
     document.body,
@@ -34,16 +37,26 @@ const PortalTooltip = ({ children, coords, visible }) => {
 // --- TRUNCATED LIST (Şubeler, Alanlar vb. için) ---
 export const TruncatedList = ({ items, colorClass, maxVisible = 1 }) => {
   const [showTooltip, setShowTooltip] = useState(false);
-  const [coords, setCoords] = useState({ top: 0, left: 0 });
+  const [coords, setCoords] = useState({
+    top: 0,
+    left: 0,
+  });
+
   const badgeRef = useRef(null);
 
-  if (!items || items.length === 0)
+  if (!items || items.length === 0) {
     return <span className="text-gray-300 text-[10px]">-</span>;
+  }
 
   const handleMouseEnter = () => {
     if (badgeRef.current) {
       const rect = badgeRef.current.getBoundingClientRect();
-      setCoords({ top: rect.bottom, left: rect.left });
+
+      setCoords({
+        top: rect.bottom,
+        left: rect.left,
+      });
+
       setShowTooltip(true);
     }
   };
@@ -58,6 +71,7 @@ export const TruncatedList = ({ items, colorClass, maxVisible = 1 }) => {
           {item}
         </span>
       ))}
+
       {items.length > maxVisible && (
         <>
           <span
@@ -68,10 +82,12 @@ export const TruncatedList = ({ items, colorClass, maxVisible = 1 }) => {
           >
             +{items.length - maxVisible}
           </span>
+
           <PortalTooltip coords={coords} visible={showTooltip}>
             <div className="text-[9px] font-black text-gray-400 mb-2 uppercase tracking-wider border-b border-gray-100 pb-1">
               Tüm Liste ({items.length})
             </div>
+
             <div className="flex flex-wrap gap-1.5">
               {items.map((item, idx) => (
                 <span
@@ -92,15 +108,18 @@ export const TruncatedList = ({ items, colorClass, maxVisible = 1 }) => {
 // --- STATUS BADGE (Durum Rozeti) ---
 export function StatusBadge({ status, statusId }) {
   const map = {
-    1: "bg-blue-100 text-blue-800 border-blue-300", // Yeni Başvuru
-    2: "bg-amber-100 text-amber-800 border-amber-300", // Devam Ediyor
-    3: "bg-emerald-100 text-emerald-800 border-emerald-300", // Onaylandı
-    4: "bg-rose-100 text-rose-800 border-rose-300", // Reddedildi
-    5: "bg-purple-100 text-purple-800 border-purple-300", // Revize Talebi
+    1: "bg-blue-100 text-blue-800 border-blue-300",
+    2: "bg-amber-100 text-amber-800 border-amber-300",
+    3: "bg-emerald-100 text-emerald-800 border-emerald-300",
+    4: "bg-rose-100 text-rose-800 border-rose-300",
+    5: "bg-purple-100 text-purple-800 border-purple-300",
   };
+
   return (
     <span
-      className={`px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase ${map[statusId] || "bg-gray-100 text-gray-800 border-gray-300"}`}
+      className={`px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase ${
+        map[statusId] || "bg-gray-100 text-gray-800 border-gray-300"
+      }`}
     >
       {status}
     </span>
@@ -113,7 +132,11 @@ export default function ApplicationTable({
   pageInput,
   setPageInput,
   handleGoToPage,
+  totalRecords,
 }) {
+  // Sadece bu kolonlarda sıralama aktif olacak.
+  const sortableColumns = ["id", "ad", "soyad", "date", "startdate"];
+
   return (
     <div className="flex w-full flex-col bg-white">
       <div className="overflow-x-auto">
@@ -121,39 +144,74 @@ export default function ApplicationTable({
           <thead className="bg-[#F8F9FB] shadow-[inset_0_-1px_0_#EEF0F3]">
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
-                {hg.headers.map((h) => (
-                  <th
-                    key={h.id}
-                    onClick={h.column.getToggleSortingHandler()}
-                    className={`px-4 py-3 text-[9px] font-black text-gray-500 uppercase tracking-widest whitespace-nowrap cursor-pointer hover:bg-gray-100 transition-colors ${["profile", "status", "stage", "actions"].includes(h.id) ? "text-center" : "text-left"}`}
-                  >
-                    <div
-                      className={`flex items-center gap-1 ${["profile", "status", "stage", "actions"].includes(h.id) ? "justify-center" : ""}`}
+                {hg.headers.map((h) => {
+                  const isSortable = sortableColumns.includes(h.id);
+
+                  const isCentered = [
+                    "profile",
+                    "status",
+                    "stage",
+                    "actions",
+                  ].includes(h.id);
+
+                  return (
+                    <th
+                      key={h.id}
+                      onClick={
+                        isSortable
+                          ? h.column.getToggleSortingHandler()
+                          : undefined
+                      }
+                      className={`
+                        px-4
+                        py-3
+                        text-[9px]
+                        font-black
+                        text-gray-500
+                        uppercase
+                        tracking-widest
+                        whitespace-nowrap
+                        transition-colors
+                        ${
+                          isSortable
+                            ? "cursor-pointer hover:bg-gray-100"
+                            : "cursor-default"
+                        }
+                        ${isCentered ? "text-center" : "text-left"}
+                      `}
                     >
-                      {flexRender(h.column.columnDef.header, h.getContext())}
-                      {h.column.getCanSort() && (
-                        <span className="text-gray-300">
-                          {h.column.getIsSorted() === "asc" ? (
-                            <FontAwesomeIcon
-                              icon={faSortUp}
-                              className="text-blue-500"
-                            />
-                          ) : h.column.getIsSorted() === "desc" ? (
-                            <FontAwesomeIcon
-                              icon={faSortDown}
-                              className="text-blue-500"
-                            />
-                          ) : (
-                            <FontAwesomeIcon icon={faSort} />
-                          )}
-                        </span>
-                      )}
-                    </div>
-                  </th>
-                ))}
+                      <div
+                        className={`flex items-center gap-1 ${
+                          isCentered ? "justify-center" : ""
+                        }`}
+                      >
+                        {flexRender(h.column.columnDef.header, h.getContext())}
+
+                        {isSortable && (
+                          <span className="text-gray-300">
+                            {h.column.getIsSorted() === "asc" ? (
+                              <FontAwesomeIcon
+                                icon={faSortUp}
+                                className="text-blue-500"
+                              />
+                            ) : h.column.getIsSorted() === "desc" ? (
+                              <FontAwesomeIcon
+                                icon={faSortDown}
+                                className="text-blue-500"
+                              />
+                            ) : (
+                              <FontAwesomeIcon icon={faSort} />
+                            )}
+                          </span>
+                        )}
+                      </div>
+                    </th>
+                  );
+                })}
               </tr>
             ))}
           </thead>
+
           <tbody className="divide-y divide-gray-100">
             {table.getRowModel().rows.length > 0 ? (
               table.getRowModel().rows.map((row) => (
@@ -195,6 +253,7 @@ export default function ApplicationTable({
             <span className="text-[10px] font-bold text-gray-500 uppercase">
               Satır Sayısı:
             </span>
+
             <select
               value={table.getState().pagination.pageSize}
               onChange={(e) => table.setPageSize(Number(e.target.value))}
@@ -216,8 +275,10 @@ export default function ApplicationTable({
             >
               <FontAwesomeIcon icon={faChevronLeft} size="xs" />
             </button>
+
             <div className="flex items-center gap-1 px-2 border-x border-gray-100">
               <span className="text-[10px] font-bold text-gray-400">Sayfa</span>
+
               <input
                 type="number"
                 min="1"
@@ -227,10 +288,12 @@ export default function ApplicationTable({
                 onKeyDown={handleGoToPage}
                 className="w-8 text-center text-[11px] font-bold text-gray-700 bg-gray-50 border border-gray-200 rounded outline-none focus:border-blue-500 transition-all"
               />
+
               <span className="text-[10px] font-bold text-gray-400">
                 / {table.getPageCount()}
               </span>
             </div>
+
             <button
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
@@ -241,11 +304,7 @@ export default function ApplicationTable({
           </div>
 
           <div className="text-[10px] font-bold text-gray-400 uppercase">
-            Toplam{" "}
-            <span className="text-gray-800">
-              {table.getFilteredRowModel().rows.length}
-            </span>{" "}
-            Kayıt
+            Toplam <span className="text-gray-800">{totalRecords}</span> Kayıt
           </div>
         </div>
       )}

@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faUser } from "@fortawesome/free-solid-svg-icons";
 import { formatDate } from "../../../../utils/dateFormatter";
@@ -8,6 +8,7 @@ import {
   CurrentStageBadge,
   JobStartDateCell,
 } from "./TableActions";
+import { basvuruService } from "../../../../services/basvuruService";
 
 export default function useAdminPanelColumns({
   auth,
@@ -20,12 +21,15 @@ export default function useAdminPanelColumns({
   setOpenModal,
   mapDtoToCvFormat,
 }) {
+  const [loadingAction, setLoadingAction] = useState(null);
   const columns = useMemo(
     () => [
       {
         accessorKey: "id",
         header: "NO / ID",
         size: 60,
+        enableSorting: true,
+        sortDescFirst: true,
         cell: ({ row }) => (
           <div className="flex flex-col items-start gap-1">
             <div className="font-black text-gray-900 text-[11px] leading-none">
@@ -81,6 +85,8 @@ export default function useAdminPanelColumns({
       {
         accessorKey: "ad",
         header: "AD",
+        enableSorting: true,
+        sortDescFirst: true,
         cell: (i) => (
           <div className="font-bold text-gray-700 text-[11px] uppercase">
             {i.getValue()}
@@ -90,6 +96,8 @@ export default function useAdminPanelColumns({
       {
         accessorKey: "soyad",
         header: "SOYAD",
+        enableSorting: true,
+        sortDescFirst: true,
         cell: (i) => (
           <div className="font-bold text-gray-700 text-[11px] uppercase">
             {i.getValue()}
@@ -99,6 +107,7 @@ export default function useAdminPanelColumns({
       {
         accessorKey: "branches",
         header: "ŞUBELER",
+        enableSorting: false,
         cell: (i) => (
           <TruncatedList
             items={i.getValue()}
@@ -109,6 +118,7 @@ export default function useAdminPanelColumns({
       {
         accessorKey: "areas",
         header: "ALANLAR",
+        enableSorting: false,
         cell: (i) => (
           <TruncatedList
             items={i.getValue()}
@@ -119,6 +129,7 @@ export default function useAdminPanelColumns({
       {
         accessorKey: "departments",
         header: "DEPARTMANLAR",
+        enableSorting: false,
         cell: (i) => (
           <TruncatedList
             items={i.getValue()}
@@ -129,6 +140,7 @@ export default function useAdminPanelColumns({
       {
         accessorKey: "roles",
         header: "POZİSYONLAR",
+        enableSorting: false,
         cell: (i) => (
           <TruncatedList
             items={i.getValue()}
@@ -139,6 +151,8 @@ export default function useAdminPanelColumns({
       {
         accessorKey: "date",
         header: "TARİH",
+        enableSorting: true,
+        sortDescFirst: true,
         cell: (i) => (
           <div className="text-[10px] text-gray-500 font-bold">
             {formatDate(i.getValue())}
@@ -146,23 +160,23 @@ export default function useAdminPanelColumns({
         ),
       },
       {
+        id: "startdate",
         accessorKey: "iseBaslamaTarihi",
-        header: "İş Başlama Tarihi",
+        header: "İŞ BAŞLAMA TARİHİ",
+        enableSorting: true,
+        sortDescFirst: true,
         cell: ({ row }) => <JobStartDateCell row={row} />,
       },
       {
         id: "status",
         header: "DURUM",
+        enableSorting: false,
         size: 150,
         minSize: 140,
         maxSize: 170,
         cell: ({ row }) => {
           const tamamenReddedildiMi = Boolean(
-            row.original.tamamenReddedildiMi ??
-            row.original.TamamenReddedildiMi ??
-            row.original.originalData?.tamamenReddedildiMi ??
-            row.original.originalData?.TamamenReddedildiMi ??
-            false,
+            row.original.tamamenReddedildiMi ?? false,
           );
 
           return (
@@ -188,13 +202,8 @@ export default function useAdminPanelColumns({
         enableSorting: true,
         cell: ({ row }) => {
           const tamamenReddedildiMi = Boolean(
-            row.original.tamamenReddedildiMi ??
-            row.original.TamamenReddedildiMi ??
-            row.original.originalData?.tamamenReddedildiMi ??
-            row.original.originalData?.TamamenReddedildiMi ??
-            false,
+            row.original.tamamenReddedildiMi ?? false,
           );
-
           return (
             <div className="flex justify-center">
               <CurrentStageBadge
@@ -215,19 +224,58 @@ export default function useAdminPanelColumns({
       {
         id: "actions",
         header: "İŞLEMLER",
+        enableSorting: false,
         cell: ({ row }) => (
           <TableActionsCell
             row={row}
             isIKGroup={isIKGroup}
             auth={auth}
-            onViewCv={(data) => {
-              setSelectedCvData(mapDtoToCvFormat(data.originalData));
-              setShowCvModal(true);
+            loadingAction={loadingAction}
+            onViewCv={async (data) => {
+              const loadingKey = `cv-${data.id}`;
+
+              if (loadingAction) return;
+
+              try {
+                setLoadingAction(loadingKey);
+
+                const response = await basvuruService.getById(data.id);
+
+                const detailData = response?.data || response?.Data || response;
+
+                setSelectedCvData(mapDtoToCvFormat(detailData));
+
+                setShowCvModal(true);
+              } catch (error) {
+                console.error("CV bilgileri alınamadı:", error);
+              } finally {
+                setLoadingAction(null);
+              }
             }}
             onSendToDept={handleSendToDepartment}
-            onOpenDetail={(data) => {
-              setActiveRow(data);
-              setOpenModal(true);
+            onOpenDetail={async (data) => {
+              const loadingKey = `detail-${data.id}`;
+
+              if (loadingAction) return;
+
+              try {
+                setLoadingAction(loadingKey);
+
+                const response = await basvuruService.getById(data.id);
+
+                const detailData = response?.data || response?.Data || response;
+
+                setActiveRow({
+                  ...data,
+                  originalData: detailData,
+                });
+
+                setOpenModal(true);
+              } catch (error) {
+                console.error("Başvuru detayı alınamadı:", error);
+              } finally {
+                setLoadingAction(null);
+              }
             }}
           />
         ),
@@ -237,6 +285,7 @@ export default function useAdminPanelColumns({
       isIKGroup,
       handleSendToDepartment,
       auth,
+      loadingAction,
       setLightboxImage,
       setSelectedCvData,
       setShowCvModal,

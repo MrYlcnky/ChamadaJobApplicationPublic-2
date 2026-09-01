@@ -89,6 +89,70 @@ namespace IsBasvuru.WebAPI.Controllers
             return CreateActionResultInstance(response);
         }
 
+        [HttpGet("GetAllOzet")]
+        [Authorize(Roles = "SuperAdmin,Admin,IkAdmin,IK,GenelMudur,DepartmanMudur,MaliIslerMudur")]
+        public async Task<IActionResult> GetAllOzet([FromQuery] MasterBasvuruOzetFiltreDto filtre)
+        {
+            var roleClaimValue =
+                User.FindFirst("RolId")?.Value ??
+                User.FindFirst("RoleId")?.Value;
+
+            if (!int.TryParse(roleClaimValue, out int roleId))
+                return Forbid();
+
+            int? subeId =
+                int.TryParse(User.FindFirst("SubeId")?.Value, out int sId)
+                    ? sId
+                    : null;
+
+            int? departmanId =
+                int.TryParse(
+                    User.FindFirst("MasterDepartmanId")?.Value ??
+                    User.FindFirst("DepartmanId")?.Value,
+                    out int dId)
+                    ? dId
+                    : null;
+
+            int? alanId =
+                int.TryParse(
+                    User.FindFirst("MasterAlanId")?.Value ??
+                    User.FindFirst("SubeAlanId")?.Value ??
+                    User.FindFirst("AlanId")?.Value,
+                    out int aId)
+                    ? aId
+                    : null;
+
+            switch (roleId)
+            {
+                case 1: // SuperAdmin
+                case 2: // Admin
+                case 3: // IkAdmin
+                case 4: // IK
+                    break;
+
+                case 5: // Genel Müdür
+                    if (!subeId.HasValue || !alanId.HasValue)
+                        return Forbid();
+                    break;
+
+                case 6: // Departman Müdürü
+                    if (!subeId.HasValue || !departmanId.HasValue)
+                        return Forbid();
+                    break;
+
+                case 7: // Mali İşler Müdürü
+                    if (!subeId.HasValue)
+                        return Forbid();
+                    break;
+
+                default:
+                    return Forbid();
+            }
+            var response = await _service.GetAllOzetAsync( roleId, subeId, departmanId, alanId, filtre);
+
+            return CreateActionResultInstance(response);
+        }
+
         [HttpGet("GetById/{id}")]
         [Authorize(Roles = "SuperAdmin,Admin,IkAdmin,IK,GenelMudur,DepartmanMudur,MaliIslerMudur")]
         public async Task<IActionResult> GetById([FromRoute] int id)

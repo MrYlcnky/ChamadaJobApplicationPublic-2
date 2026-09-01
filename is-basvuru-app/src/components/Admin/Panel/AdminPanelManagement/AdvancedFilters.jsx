@@ -342,6 +342,12 @@ export default function AdvancedFilters({
   onApply,
   onClear,
 }) {
+  const branchOptions = (lookups.subeler || []).flatMap((sube) => {
+    const subeAdi = String(sube);
+    const kisaAd = subeAdi.replace(/^Chamada\s+/i, "");
+
+    return [`${kisaAd} Seçenler`, `Sadece ${kisaAd}`];
+  });
   return (
     <div
       className="
@@ -393,8 +399,8 @@ export default function AdvancedFilters({
               name="branch"
               value={filters.branch}
               onChange={onFilterChange}
-              options={lookups.subeler}
-              placeholder="Şubeler"
+              options={branchOptions}
+              placeholder="Şube Tercihi"
             />
 
             <CustomSelect
@@ -533,7 +539,6 @@ export default function AdvancedFilters({
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-
             onClear();
           }}
           className="

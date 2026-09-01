@@ -379,6 +379,15 @@ export default function LoginForm() {
               both;
           }
 
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus, 
+input:-webkit-autofill:active {
+    -webkit-text-fill-color: #ffffff !important;
+    transition: background-color 5000s ease-in-out 0s !important;
+}
+
+
           /* =====================================================
              ERİŞİLEBİLİRLİK
           ===================================================== */
@@ -598,6 +607,7 @@ export default function LoginForm() {
                 autoComplete="username"
                 autoFocus
                 className="
+                [color-scheme:dark]
                   block
                   w-full
                   rounded-xl
@@ -670,6 +680,7 @@ export default function LoginForm() {
                 placeholder="••••••••"
                 autoComplete="current-password"
                 className="
+                [color-scheme:dark]
                   block
                   w-full
                   rounded-xl

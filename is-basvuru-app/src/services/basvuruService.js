@@ -44,9 +44,44 @@ export const basvuruService = {
   },
 
   // --- ADMİN (PANEL) İŞLEMLERİ (MasterBasvuruController) ---
-
+  /*
   getAll: async () => {
     const response = await axiosClient.get("/MasterBasvuru/GetAll");
+    return response.data;
+  },*/
+  getAll: async (params = {}) => {
+    const queryParams = {
+      PageNumber: params.pageNumber ?? 1,
+      PageSize: params.pageSize ?? 10,
+      ...params,
+    };
+
+    const response = await axiosClient.get("/MasterBasvuru/GetAllOzet", {
+      params: queryParams,
+
+      paramsSerializer: (params) => {
+        const searchParams = new URLSearchParams();
+
+        Object.entries(params).forEach(([key, value]) => {
+          if (value === undefined || value === null || value === "") {
+            return;
+          }
+
+          if (Array.isArray(value)) {
+            value.forEach((item) => {
+              searchParams.append(key, item);
+            });
+
+            return;
+          }
+
+          searchParams.append(key, value);
+        });
+
+        return searchParams.toString();
+      },
+    });
+
     return response.data;
   },
 

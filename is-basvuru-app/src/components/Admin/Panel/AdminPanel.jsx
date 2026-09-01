@@ -7,8 +7,6 @@ import { faSpinner, faXmark } from "@fortawesome/free-solid-svg-icons";
 import {
   useReactTable,
   getCoreRowModel,
-  getFilteredRowModel,
-  getSortedRowModel,
   getPaginationRowModel,
 } from "@tanstack/react-table";
 
@@ -35,7 +33,7 @@ export default function AdminPanel() {
   const {
     applicationData,
     filteredData,
-    loading,
+    initialLoading,
 
     tab,
     setTab,
@@ -58,25 +56,22 @@ export default function AdminPanel() {
 
     fetchData,
     initialFilters,
+    paginationMeta,
+    pageNumber,
+    setPageNumber,
+    pageSize,
+    setPageSize,
+    search,
+    setSearch,
+    sorting,
+    setSorting,
   } = useAdminPanelLogic();
 
   // =====================================================
   // 2. UI STATE
   // =====================================================
 
-  const [globalFilter, setGlobalFilter] = useState("");
-
-  const [sorting, setSorting] = useState([
-    {
-      id: "date",
-      desc: true,
-    },
-  ]);
-
-  const [pagination, setPagination] = useState({
-    pageIndex: 0,
-    pageSize: 10,
-  });
+  const [searchInput, setSearchInput] = useState(search);
 
   const [pageInput, setPageInput] = useState(1);
 
@@ -94,6 +89,16 @@ export default function AdminPanel() {
 
   const [selectedCvData, setSelectedCvData] = useState(null);
 
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      const value = searchInput.trim();
+
+      setPageNumber(1);
+      setSearch(value);
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchInput, setPageNumber, setSearch]);
   // =====================================================
   // Filtre Paneli Dışına Tıklama
   // =====================================================
@@ -151,16 +156,7 @@ export default function AdminPanel() {
         }
       }
 
-      const isBasvuruDetay =
-        row.originalData?.personel?.isBasvuruDetay ||
-        row.originalData?.Personel?.IsBasvuruDetay ||
-        {};
-
-      const defaultIds = (
-        isBasvuruDetay.basvuruDepartmanlar ||
-        isBasvuruDetay.BasvuruDepartmanlar ||
-        []
-      ).map((d) => Number(d.departmanId || d.DepartmanId || d.id || d.Id));
+      const defaultIds = row.appliedDepartmentIds || [];
 
       setSevkPopupState({
         isOpen: true,
@@ -199,20 +195,36 @@ export default function AdminPanel() {
     columns,
 
     state: {
-      globalFilter,
       sorting,
-      pagination,
+      pagination: {
+        pageIndex: pageNumber - 1,
+        pageSize,
+      },
     },
 
-    onGlobalFilterChange: setGlobalFilter,
     onSortingChange: setSorting,
-    onPaginationChange: setPagination,
 
     getCoreRowModel: getCoreRowModel(),
 
-    getFilteredRowModel: getFilteredRowModel(),
+    manualPagination: true,
+    manualSorting: true,
 
-    getSortedRowModel: getSortedRowModel(),
+    enableMultiSort: false,
+    enableSortingRemoval: true,
+
+    pageCount: paginationMeta.totalPages,
+
+    onPaginationChange: (updater) => {
+      const current = {
+        pageIndex: pageNumber - 1,
+        pageSize,
+      };
+
+      const next = typeof updater === "function" ? updater(current) : updater;
+
+      setPageNumber(next.pageIndex + 1);
+      setPageSize(next.pageSize);
+    },
 
     getPaginationRowModel: getPaginationRowModel(),
   });
@@ -227,7 +239,7 @@ export default function AdminPanel() {
   // LOADING
   // =====================================================
 
-  if (loading) {
+  if (initialLoading) {
     return (
       <div
         className="
@@ -291,15 +303,15 @@ export default function AdminPanel() {
       ================================================= */}
 
       <AdminPanelHeader
-        filteredDataLength={filteredData.length}
+        filteredDataLength={paginationMeta.totalRecords}
         tab={tab}
         setTab={setTab}
         branchFilter={branchFilter}
         setBranchFilter={setBranchFilter}
         stageFilter={stageFilter}
         setStageFilter={setStageFilter}
-        globalFilter={globalFilter}
-        setGlobalFilter={setGlobalFilter}
+        globalFilter={searchInput}
+        setGlobalFilter={setSearchInput}
         filterPanelRef={filterPanelRef}
         isFilterOpen={isFilterOpen}
         setIsFilterOpen={setIsFilterOpen}
@@ -345,6 +357,7 @@ export default function AdminPanel() {
           table={table}
           pageInput={pageInput}
           setPageInput={setPageInput}
+          totalRecords={paginationMeta.totalRecords}
           handleGoToPage={(e) => {
             if (e.key !== "Enter") return;
 

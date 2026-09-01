@@ -53,10 +53,6 @@ const service = {
   },
 
   getIlcelerBySehirId: async (sehirId) => {
-    // Backend endpoint'i varsa orayı kullan, yoksa filtrele:
-    // const response = await axiosClient.get(`/Ilce/GetBySehirId/${sehirId}`);
-    // return unwrap(response);
-
     // Geçici Client-Side Filtreleme (Backend endpoint yoksa):
     const res = await service.getIlceler();
     const sehirNum = toNum(sehirId);

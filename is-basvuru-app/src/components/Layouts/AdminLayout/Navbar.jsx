@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink, useNavigate, useLocation } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 
 import {
@@ -32,7 +32,24 @@ import logo from "../../../assets/ch.ico";
 
 export default function Navbar() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const handleNavigation = (path) => {
+    if (location.pathname === path) {
+      window.location.reload();
+      return;
+    }
 
+    navigate(path);
+  };
+
+  const handlePanelClick = (e) => {
+    closeDesktopMenus();
+
+    if (location.pathname === "/admin/panel") {
+      e.preventDefault();
+      window.location.reload();
+    }
+  };
   const [auth, setAuth] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -107,7 +124,7 @@ export default function Navbar() {
   const handleGoHome = () => {
     closeDesktopMenus();
 
-    navigate("/admin/panel");
+    handleNavigation("/admin/panel");
   };
 
   // ========================================================
@@ -193,10 +210,6 @@ export default function Navbar() {
     };
 
     fetchNotifications();
-
-    const interval = setInterval(fetchNotifications, 60000);
-
-    return () => clearInterval(interval);
   }, [auth]);
 
   // ========================================================
@@ -536,7 +549,7 @@ export default function Navbar() {
               <NavLink
                 to="/admin/panel"
                 end
-                onClick={closeDesktopMenus}
+                onClick={handlePanelClick}
                 className={({ isActive }) =>
                   `${desktopMenuBase} ${
                     isActive ? desktopMenuActive : desktopMenuPassive

@@ -17,5 +17,8 @@ namespace IsBasvuru.Domain.Interfaces
 
         Task<ServiceResponse<bool>> SevkEtAsync(SevkEtRequestDto request, int? islemYapanSubeId);
         Task<ServiceResponse<bool>> DepartmanDegerlendirAsync(BasvuruSevkDegerlendirmeDto dto, int? subeId, int departmanId);
+
+        Task<ServiceResponse<PagedResponse<List<MasterBasvuruOzetListDto>>>> GetAllOzetAsync( int roleId, int? subeId, int? departmanId, int? alanId, MasterBasvuruOzetFiltreDto filtre);
+
     }
 }

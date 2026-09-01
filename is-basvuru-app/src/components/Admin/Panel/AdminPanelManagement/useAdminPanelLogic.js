@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "react-toastify";
 import { basvuruService } from "../../../../services/basvuruService";
-import { resolveImageUrl, calculateAge, EGITIM_SEVIYELERI } from "./TableUtils";
+import { resolveImageUrl, EGITIM_SEVIYELERI } from "./TableUtils";
+import { tanimlamalarService } from "../../../../services/tanimlamalarService";
 
 export const initialFilters = {
   branch: "all",
@@ -17,17 +18,46 @@ export const initialFilters = {
   education: "all",
 };
 
+const egitimSeviyesiMap = {
+  Lise: 1,
+  "Ön Lisans": 2,
+  Lisans: 3,
+  "Yüksek Lisans": 4,
+  Doktora: 5,
+  Diğer: 6,
+};
+
 export default function useAdminPanelLogic() {
   const [applicationData, setApplicationData] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [tab, setTab] = useState("all");
   const [branchFilter, setBranchFilter] = useState("all");
-  // 🎯 YENİ: Aşama Filtresi için State
   const [stageFilter, setStageFilter] = useState("all");
-
+  const [search, setSearch] = useState("");
+  const [initialLoading, setInitialLoading] = useState(true);
   const [filters, setFilters] = useState(initialFilters);
   const [activeFilters, setActiveFilters] = useState(initialFilters);
+  const [paginationMeta, setPaginationMeta] = useState({
+    pageNumber: 1,
+    pageSize: 10,
+    totalRecords: 0,
+    totalPages: 0,
+  });
+  const [pageNumber, setPageNumber] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [lookups, setLookups] = useState({
+    subeler: [],
+    alanlar: [],
+    departmanlar: [],
+    pozisyonlar: [],
+  });
+  const [sorting, setSorting] = useState([
+    {
+      id: "date",
+      desc: true,
+    },
+  ]);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const openId = searchParams.get("openId");
@@ -46,47 +76,216 @@ export default function useAdminPanelLogic() {
   );
 
   const isIKGroup = useMemo(() => [1, 2, 3, 4].includes(roleId), [roleId]);
-  const isGenelMudur = useMemo(() => roleId === 5, [roleId]);
-  const isDepartmanMudur = useMemo(() => roleId === 6, [roleId]);
-  const isMaliIslerMudur = useMemo(() => roleId === 7, [roleId]);
 
-  const lookups = useMemo(() => {
-    const extract = (key) =>
-      [...new Set(applicationData.flatMap((d) => d[key] || []))]
-        .filter(Boolean)
-        .sort();
-    return {
-      subeler: extract("branches"),
-      alanlar: extract("areas"),
-      departmanlar: extract("departments"),
-      pozisyonlar: extract("roles"),
+  useEffect(() => {
+    const fetchLookups = async () => {
+      try {
+        const [subeRes, alanRes, departmanRes, pozisyonRes] = await Promise.all(
+          [
+            tanimlamalarService.getSubeler(),
+            tanimlamalarService.getMasterAlanlar(),
+            tanimlamalarService.getMasterDepartmanlar(),
+            tanimlamalarService.getMasterPozisyonlar(),
+          ],
+        );
+
+        setLookups({
+          subeler: (subeRes.data || [])
+            .map((x) => x.subeAdi || x.SubeAdi || x.ad || x.Ad || "")
+            .filter(Boolean)
+            .sort(),
+
+          alanlar: (alanRes.data || [])
+            .map(
+              (x) =>
+                x.masterAlanAdi ||
+                x.MasterAlanAdi ||
+                x.alanAdi ||
+                x.AlanAdi ||
+                "",
+            )
+            .filter(Boolean)
+            .sort(),
+
+          departmanlar: (departmanRes.data || [])
+            .map(
+              (x) =>
+                x.masterDepartmanAdi ||
+                x.MasterDepartmanAdi ||
+                x.departmanAdi ||
+                x.DepartmanAdi ||
+                "",
+            )
+            .filter(Boolean)
+            .sort(),
+
+          pozisyonlar: (pozisyonRes.data || [])
+            .map(
+              (x) =>
+                x.masterPozisyonAdi ||
+                x.MasterPozisyonAdi ||
+                x.pozisyonAdi ||
+                x.PozisyonAdi ||
+                "",
+            )
+            .filter(Boolean)
+            .sort(),
+        });
+      } catch (error) {
+        console.error("Filtre tanımlamaları alınamadı:", error);
+      }
     };
-  }, [applicationData]);
+
+    fetchLookups();
+  }, []);
+
+  //Filtre Effectler
+
+  useEffect(() => {
+    setPageNumber(1);
+  }, [branchFilter]);
+
+  useEffect(() => {
+    setPageNumber(1);
+  }, [tab]);
+
+  useEffect(() => {
+    setPageNumber(1);
+  }, [stageFilter]);
+
+  useEffect(() => {
+    setPageNumber(1);
+  }, [activeFilters]);
 
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await basvuruService.getAll();
+
+      const statusMap = {
+        new: [1],
+        pending: [2, 5],
+        approved: [3],
+        rejected: [4],
+        revision: [5],
+      };
+
+      const tabParams = {};
+
+      if (tab === "completelyRejected") {
+        tabParams.TamamenReddedildiMi = true;
+      } else if (tab === "hasStartDate") {
+        tabParams.TamamenReddedildiMi = false;
+        tabParams.IseBaslamaTarihiVarMi = true;
+      } else if (tab !== "all") {
+        tabParams.Durumlar = statusMap[tab];
+        tabParams.TamamenReddedildiMi = false;
+      }
+
+      let resolvedSube;
+      let sadeceSube;
+
+      if (branchFilter !== "all") {
+        if (branchFilter.startsWith("selected:")) {
+          resolvedSube = branchFilter.replace("selected:", "");
+          sadeceSube = false;
+        } else if (branchFilter.startsWith("only:")) {
+          resolvedSube = branchFilter.replace("only:", "");
+          sadeceSube = true;
+        } else {
+          resolvedSube = branchFilter;
+          sadeceSube = false;
+        }
+      } else if (activeFilters.branch !== "all") {
+        const advancedBranch = activeFilters.branch;
+
+        sadeceSube = advancedBranch.startsWith("Sadece ");
+
+        const kisaAd = advancedBranch
+          .replace(/^Sadece\s+/i, "")
+          .replace(/\s+Seçenler$/i, "")
+          .trim();
+
+        resolvedSube = (lookups.subeler || []).find((sube) => {
+          const subeAdi = String(sube);
+
+          const subeKisaAd = subeAdi.replace(/^Chamada\s+/i, "").trim();
+
+          return (
+            subeKisaAd.toLocaleLowerCase("tr-TR") ===
+            kisaAd.toLocaleLowerCase("tr-TR")
+          );
+        });
+      }
+      const response = await basvuruService.getAll({
+        pageNumber,
+        pageSize,
+        SortBy: sorting[0]?.id || "date",
+        SortDescending: sorting[0]?.desc ?? true,
+        Search: search || undefined,
+        Sube: resolvedSube || undefined,
+        SadeceSube: resolvedSube !== undefined ? sadeceSube : undefined,
+        Asama: stageFilter === "all" ? undefined : Number(stageFilter),
+        Alan: activeFilters.area === "all" ? undefined : activeFilters.area,
+        Departman:
+          activeFilters.department === "all"
+            ? undefined
+            : activeFilters.department,
+        Pozisyon: activeFilters.role === "all" ? undefined : activeFilters.role,
+        BaslangicTarihi: activeFilters.startDate || undefined,
+        BitisTarihi: activeFilters.endDate || undefined,
+        Cinsiyet:
+          activeFilters.gender === "all"
+            ? undefined
+            : activeFilters.gender === "Kadın"
+              ? 1
+              : activeFilters.gender === "Erkek"
+                ? 2
+                : undefined,
+        EgitimSeviyesi:
+          activeFilters.education === "all"
+            ? undefined
+            : egitimSeviyesiMap[activeFilters.education],
+        YasMin:
+          activeFilters.ageMin === ""
+            ? undefined
+            : Number(activeFilters.ageMin),
+
+        YasMax:
+          activeFilters.ageMax === ""
+            ? undefined
+            : Number(activeFilters.ageMax),
+        ...tabParams,
+      });
+
+      const pagedData = response?.data || response?.Data;
+
+      setPaginationMeta({
+        pageNumber: pagedData?.pageNumber ?? pagedData?.PageNumber ?? 1,
+        pageSize: pagedData?.pageSize ?? pagedData?.PageSize ?? 10,
+        totalRecords: pagedData?.totalRecords ?? pagedData?.TotalRecords ?? 0,
+        totalPages: pagedData?.totalPages ?? pagedData?.TotalPages ?? 0,
+      });
+
       const rawData = response?.data || response?.data?.data || response || [];
       const actualList = Array.isArray(rawData) ? rawData : rawData.data || [];
 
       const mappedData = actualList.map((item) => {
-        const p = item.personel || item.Personel || {};
-        const kisisel = p.kisiselBilgiler || p.KisiselBilgiler || {};
-        const detay = p.isBasvuruDetay || p.IsBasvuruDetay || {};
+        const egitimSeviyeleri =
+          item.egitimSeviyeleri || item.EgitimSeviyeleri || [];
+
+        const sevkler = item.sevkler || item.Sevkler || [];
+
         return {
           id: item.id || item.Id,
-          personelId: item.personelId || p.id || p.Id,
-          ad: kisisel.ad || kisisel.Ad || "-",
-          soyad:
-            kisisel.soyadi ||
-            kisisel.Soyadi ||
-            kisisel.soyad ||
-            kisisel.Soyad ||
-            p.soyad ||
-            p.Soyad ||
-            "-",
+
+          personelId: item.personelId || item.PersonelId,
+
+          ad: item.ad || item.Ad || "-",
+
+          soyad: item.soyad || item.Soyad || "-",
+
           statusId: Number(item.basvuruDurum ?? item.BasvuruDurum),
+
           approvalStage: Number(
             item.basvuruOnayAsamasi ?? item.BasvuruOnayAsamasi,
           ),
@@ -94,56 +293,60 @@ export default function useAdminPanelLogic() {
           tamamenReddedildiMi: Boolean(
             item.tamamenReddedildiMi ?? item.TamamenReddedildiMi ?? false,
           ),
+
           personal: {
-            foto: resolveImageUrl(kisisel.vesikalikFotograf || p.fotografYolu),
-            birthDate: kisisel.dogumTarihi || kisisel.DogumTarihi,
+            foto: resolveImageUrl(item.fotografYolu || item.FotografYolu),
+
+            birthDate: item.dogumTarihi || item.DogumTarihi || null,
+
             genderText:
-              (kisisel.cinsiyet || kisisel.Cinsiyet) === 2
+              Number(item.cinsiyet ?? item.Cinsiyet) === 2
                 ? "Erkek"
-                : (kisisel.cinsiyet || kisisel.Cinsiyet) === 1
+                : Number(item.cinsiyet ?? item.Cinsiyet) === 1
                   ? "Kadın"
                   : "Belirsiz",
           },
+
           date: item.basvuruTarihi || item.BasvuruTarihi,
-          status: item.basvuruDurumAdi || item.BasvuruDurumAdi,
-          iseBaslamaTarihi: item.iseBaslamaTarihi || item.IseBaslamaTarihi,
-          branches: [
-            ...new Set(
-              (detay.basvuruSubeler || detay.BasvuruSubeler)
-                ?.map((s) => s.subeAdi || s.SubeAdi)
-                .filter(Boolean) || [],
-            ),
-          ],
-          areas: [
-            ...new Set(
-              (detay.basvuruAlanlar || detay.BasvuruAlanlar)
-                ?.map((a) => a.alanAdi || a.AlanAdi)
-                .filter(Boolean) || [],
-            ),
-          ],
-          departments: [
-            ...new Set(
-              (detay.basvuruDepartmanlar || detay.BasvuruDepartmanlar)
-                ?.map((d) => d.departmanAdi || d.DepartmanAdi)
-                .filter(Boolean) || [],
-            ),
-          ],
-          roles: [
-            ...new Set(
-              (detay.basvuruPozisyonlar || detay.BasvuruPozisyonlar)
-                ?.map((p) => p.pozisyonAdi || p.PozisyonAdi)
-                .filter(Boolean) || [],
-            ),
-          ],
-          educations: (p.egitimBilgileri || p.EgitimBilgileri || [])
-            .map(
-              (e) =>
-                EGITIM_SEVIYELERI[e.egitimSeviyesi || e.EgitimSeviyesi] ||
-                e.egitimSeviyesiAdi ||
-                null,
-            )
+
+          status: item.basvuruDurumAdi || item.BasvuruDurumAdi || "",
+
+          iseBaslamaTarihi:
+            item.iseBaslamaTarihi || item.IseBaslamaTarihi || null,
+
+          branches: item.subeler || item.Subeler || [],
+
+          areas: item.alanlar || item.Alanlar || [],
+
+          departments: item.departmanlar || item.Departmanlar || [],
+
+          roles: item.pozisyonlar || item.Pozisyonlar || [],
+
+          educations: egitimSeviyeleri
+            .map((e) => EGITIM_SEVIYELERI[e] || null)
             .filter(Boolean),
-          originalData: item,
+
+          appliedBranchIds:
+            item.basvuruSubeIdleri || item.BasvuruSubeIdleri || [],
+
+          appliedDepartmentIds:
+            item.basvuruDepartmanIdleri || item.BasvuruDepartmanIdleri || [],
+
+          sevkler: sevkler.map((s) => ({
+            subeId: Number(s.subeId ?? s.SubeId ?? 0),
+
+            subeAdi: s.subeAdi || s.SubeAdi || "",
+
+            sevkDurumu: Number(s.sevkDurumu ?? s.SevkDurumu ?? 0),
+
+            departmanId: Number(s.departmanId ?? s.DepartmanId ?? 0),
+
+            masterDepartmanId: Number(
+              s.masterDepartmanId ?? s.MasterDepartmanId ?? 0,
+            ),
+
+            masterAlanId: Number(s.masterAlanId ?? s.MasterAlanId ?? 0),
+          })),
         };
       });
       setApplicationData(mappedData);
@@ -151,8 +354,19 @@ export default function useAdminPanelLogic() {
       toast.error("Veriler yüklenirken hata oluştu.");
     } finally {
       setLoading(false);
+      setInitialLoading(false);
     }
-  }, []);
+  }, [
+    pageNumber,
+    pageSize,
+    sorting,
+    search,
+    branchFilter,
+    tab,
+    stageFilter,
+    activeFilters,
+    lookups.subeler,
+  ]);
 
   useEffect(() => {
     fetchData();
@@ -164,155 +378,9 @@ export default function useAdminPanelLogic() {
       searchParams.delete("view");
       setSearchParams(searchParams, { replace: true });
     }
-  }, [view, setSearchParams, searchParams]);
+  }, [view, setSearchParams, searchParams, activeFilters]);
 
-  const filteredData = useMemo(() => {
-    let data = [...applicationData];
-
-    if (roleId !== null && !isIKGroup) {
-      if (isDepartmanMudur) {
-        data = data.filter((app) => Number(app.approvalStage) >= 2);
-      } else if (isGenelMudur || isMaliIslerMudur) {
-        const requiredStage = isGenelMudur ? 4 : 5;
-        data = data.filter((app) => {
-          const isFollowableStage = Number(app.approvalStage) >= requiredStage;
-          const userSubeId = auth?.subeId ? Number(auth.subeId) : null;
-          if (userSubeId === null) return false;
-
-          const p = app.originalData?.personel || app.originalData?.Personel;
-          const detay = p?.isBasvuruDetay || p?.IsBasvuruDetay;
-          const appSubeler =
-            detay?.basvuruSubeler || detay?.BasvuruSubeler || [];
-          return (
-            isFollowableStage &&
-            appSubeler.some(
-              (s) =>
-                Number(s.subeId || s.SubeId || s.id || s.Id) === userSubeId,
-            )
-          );
-        });
-      }
-    }
-
-    if (branchFilter !== "all") {
-      const normalizeText = (text) => {
-        return String(text)
-          .toLocaleLowerCase("tr-TR")
-          .replace(/ğ/g, "g")
-          .replace(/ü/g, "u")
-          .replace(/ş/g, "s")
-          .replace(/ı/g, "i")
-          .replace(/ö/g, "o")
-          .replace(/ç/g, "c")
-          .replace(/i̇/g, "i");
-      };
-
-      const searchKey = normalizeText(branchFilter);
-
-      data = data.filter((row) => {
-        const isTargetBranch = row.branches.some((b) =>
-          normalizeText(b).includes(searchKey),
-        );
-        const hasOtherBranch = row.branches.some(
-          (b) => !normalizeText(b).includes(searchKey),
-        );
-        return isTargetBranch && !hasOtherBranch;
-      });
-    }
-
-    // 3. SEKME (TAB) DURUM FİLTRESİ
-    if (tab !== "all") {
-      if (tab === "completelyRejected") {
-        data = data.filter((row) => row.tamamenReddedildiMi === true);
-      } else if (tab === "hasStartDate") {
-        data = data.filter((row) => {
-          const dateStr = row.iseBaslamaTarihi || row.IseBaslamaTarihi;
-
-          return (
-            !row.tamamenReddedildiMi &&
-            dateStr &&
-            !String(dateStr).startsWith("0001")
-          );
-        });
-      } else {
-        const statusMap = {
-          new: [1],
-          pending: [2, 5],
-          approved: [3],
-          rejected: [4],
-          revision: [5],
-        };
-
-        data = data.filter(
-          (row) =>
-            !row.tamamenReddedildiMi && statusMap[tab]?.includes(row.statusId),
-        );
-      }
-    }
-
-    // 🎯 YENİ: AŞAMA (STAGE) FİLTRESİ
-    if (stageFilter !== "all") {
-      data = data.filter(
-        (row) => Number(row.approvalStage) === Number(stageFilter),
-      );
-    }
-
-    const {
-      branch,
-      area,
-      department,
-      role,
-      startDate,
-      endDate,
-      ageMin,
-      ageMax,
-      gender,
-      education,
-    } = activeFilters;
-
-    if (branch !== "all")
-      data = data.filter((r) => r.branches.includes(branch));
-    if (area !== "all") data = data.filter((r) => r.areas.includes(area));
-    if (department !== "all")
-      data = data.filter((r) => r.departments.includes(department));
-    if (role !== "all") data = data.filter((r) => r.roles.includes(role));
-    if (startDate)
-      data = data.filter((r) => new Date(r.date) >= new Date(startDate));
-    if (endDate)
-      data = data.filter((r) => new Date(r.date) <= new Date(endDate));
-    if (gender !== "all")
-      data = data.filter((r) => r.personal.genderText === gender);
-    if (education !== "all")
-      data = data.filter((r) =>
-        r.educations.some(
-          (e) => String(e).toLowerCase() === String(education).toLowerCase(),
-        ),
-      );
-
-    if (ageMin || ageMax) {
-      data = data.filter((r) => {
-        const age = calculateAge(r.personal.birthDate);
-        return (
-          (!ageMin || age >= Number(ageMin)) &&
-          (!ageMax || age <= Number(ageMax))
-        );
-      });
-    }
-
-    return data;
-  }, [
-    applicationData,
-    tab,
-    branchFilter,
-    stageFilter, // 🎯 EKLENDİ
-    activeFilters,
-    isIKGroup,
-    isDepartmanMudur,
-    isGenelMudur,
-    isMaliIslerMudur,
-    roleId,
-    auth,
-  ]);
+  const filteredData = applicationData;
 
   return {
     applicationData,
@@ -322,8 +390,8 @@ export default function useAdminPanelLogic() {
     setTab,
     branchFilter,
     setBranchFilter,
-    stageFilter, // 🎯 EKLENDİ
-    setStageFilter, // 🎯 EKLENDİ
+    stageFilter,
+    setStageFilter,
     filters,
     setFilters,
     activeFilters,
@@ -335,5 +403,16 @@ export default function useAdminPanelLogic() {
     openId,
     searchParams,
     setSearchParams,
+    paginationMeta,
+    pageNumber,
+    setPageNumber,
+    pageSize,
+    setPageSize,
+    search,
+    setSearch,
+    initialLoading,
+    initialFilters,
+    sorting,
+    setSorting,
   };
 }

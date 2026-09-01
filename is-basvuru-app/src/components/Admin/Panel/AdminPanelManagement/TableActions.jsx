@@ -10,50 +10,43 @@ import {
   faXmark,
   faClock,
   faBan,
-  faCalendarAlt, // 🎯 TAKVİM İKONU
+  faCalendarAlt,
+  faSpinner,
 } from "@fortawesome/free-solid-svg-icons";
 
 export const TableActionsCell = ({
   row,
   isIKGroup,
   auth,
+  loadingAction,
   onViewCv,
   onSendToDept,
   onOpenDetail,
 }) => {
   const stage = Number(row.original.approvalStage || 1);
+
   const statusId = Number(
     row.original.statusId || row.original.basvuruDurum || 1,
   );
 
-  const rawData = row?.original?.originalData || row?.original || {};
-  const tamamenReddedildiMi = Boolean(
-    row.original.tamamenReddedildiMi ??
-    row.original.TamamenReddedildiMi ??
-    rawData.tamamenReddedildiMi ??
-    rawData.TamamenReddedildiMi ??
-    false,
-  );
-  const sevkler = rawData?.basvuruSevkleri || rawData?.BasvuruSevkleri || [];
-
   const rawSube = auth?.subeId || auth?.SubeId;
+
   const allowedSubeIds = rawSube
     ? String(rawSube)
         .split(",")
         .map((s) => Number(s.trim()))
         .filter((n) => !isNaN(n))
     : [];
+
   const hasSpecificBranches = allowedSubeIds.length > 0;
 
-  const isBasvuruDetay =
-    rawData?.personel?.isBasvuruDetay ||
-    rawData?.Personel?.IsBasvuruDetay ||
-    {};
-  const basvuruSubeler =
-    isBasvuruDetay.basvuruSubeler || isBasvuruDetay.BasvuruSubeler || [];
-  const appliedBranchIds = basvuruSubeler.map((s) =>
-    Number(s.subeId || s.SubeId || s.id || s.Id),
+  const tamamenReddedildiMi = Boolean(
+    row.original.tamamenReddedildiMi ?? false,
   );
+
+  const sevkler = row.original.sevkler || [];
+
+  const appliedBranchIds = row.original.appliedBranchIds || [];
 
   const hasAppliedToMyBranch = hasSpecificBranches
     ? allowedSubeIds.some((id) => appliedBranchIds.includes(id))
@@ -64,12 +57,11 @@ export const TableActionsCell = ({
   if (isIKGroup) {
     if (hasSpecificBranches) {
       const myBranchSevkler = sevkler.filter((s) =>
-        allowedSubeIds.includes(Number(s.subeId || s.SubeId)),
+        allowedSubeIds.includes(s.subeId),
       );
+
       const otherBranchActiveSevks = sevkler.filter(
-        (s) =>
-          !allowedSubeIds.includes(Number(s.subeId || s.SubeId)) &&
-          Number(s.sevkDurumu || s.SevkDurumu) !== 3,
+        (s) => !allowedSubeIds.includes(s.subeId) && s.sevkDurumu !== 3,
       );
 
       if (
@@ -83,6 +75,7 @@ export const TableActionsCell = ({
       }
     } else {
       const isAlreadySent = sevkler.length > 0;
+
       showSevkButton = (!isAlreadySent && stage === 1) || statusId === 4;
     }
   }
@@ -91,36 +84,95 @@ export const TableActionsCell = ({
     showSevkButton = false;
   }
 
+  const isCvLoading = loadingAction === `cv-${row.original.id}`;
+
+  const isDetailLoading = loadingAction === `detail-${row.original.id}`;
+
+  const isAnyLoading = Boolean(loadingAction);
+
   return (
     <div className="flex items-center justify-center gap-2">
       <button
+        type="button"
+        disabled={isAnyLoading}
         onClick={() => onViewCv(row.original)}
-        className="p-1.5 text-red-500 hover:text-red-700 transition-colors bg-red-50 rounded shadow-sm border border-red-100"
-        title="CV Görüntüle / İndir"
+        className={`
+          p-1.5
+          rounded
+          border
+          shadow-sm
+          transition-colors
+          ${
+            isAnyLoading
+              ? "cursor-not-allowed border-gray-100 bg-gray-50 text-gray-300"
+              : "cursor-pointer border-red-100 bg-red-50 text-red-500 hover:text-red-700"
+          }
+        `}
+        title={isCvLoading ? "CV yükleniyor..." : "CV Görüntüle / İndir"}
       >
-        <FontAwesomeIcon icon={faFilePdf} />
+        <FontAwesomeIcon
+          icon={isCvLoading ? faSpinner : faFilePdf}
+          spin={isCvLoading}
+        />
       </button>
 
       {showSevkButton && (
         <button
+          type="button"
           onClick={() => onSendToDept(row.original.id)}
-          className="px-2 py-1 bg-amber-500 text-white text-[9px] font-black rounded hover:bg-amber-600 flex items-center gap-1 transition-all uppercase shadow-sm animate-in fade-in"
+          className="
+            px-2
+            py-1
+            bg-amber-500
+            text-white
+            text-[9px]
+            font-black
+            rounded
+            hover:bg-amber-600
+            flex
+            items-center
+            gap-1
+            transition-all
+            uppercase
+            shadow-sm
+            animate-in
+            fade-in
+            cursor-pointer
+          "
           title="Departmana Sevk Et"
         >
-          <FontAwesomeIcon icon={faArrowRight} /> Sevk
+          <FontAwesomeIcon icon={faArrowRight} />
+          Sevk
         </button>
       )}
 
       <button
+        type="button"
+        disabled={isAnyLoading}
         onClick={() => onOpenDetail(row.original)}
-        className="p-1.5 text-blue-500 hover:text-blue-700 transition-colors bg-blue-50 rounded shadow-sm border border-blue-100"
-        title="Detayları Gör"
+        className={`
+          p-1.5
+          rounded
+          border
+          shadow-sm
+          transition-colors
+          ${
+            isAnyLoading
+              ? "cursor-not-allowed border-gray-100 bg-gray-50 text-gray-300"
+              : "cursor-pointer border-blue-100 bg-blue-50 text-blue-500 hover:text-blue-700"
+          }
+        `}
+        title={isDetailLoading ? "Detay yükleniyor..." : "Detayları Gör"}
       >
-        <FontAwesomeIcon icon={faEye} />
+        <FontAwesomeIcon
+          icon={isDetailLoading ? faSpinner : faEye}
+          spin={isDetailLoading}
+        />
       </button>
     </div>
   );
 };
+
 export const CurrentStageBadge = ({
   stage,
   statusId,
@@ -128,14 +180,8 @@ export const CurrentStageBadge = ({
   auth,
   isIKGroup,
 }) => {
-  const rawData = row?.original?.originalData || row?.original || {};
-
   const tamamenReddedildiMi = Boolean(
-    row?.original?.tamamenReddedildiMi ??
-    row?.original?.TamamenReddedildiMi ??
-    rawData?.tamamenReddedildiMi ??
-    rawData?.TamamenReddedildiMi ??
-    false,
+    row.original.tamamenReddedildiMi ?? false,
   );
 
   if (tamamenReddedildiMi) {
@@ -156,7 +202,7 @@ export const CurrentStageBadge = ({
     );
   }
 
-  const sevkler = rawData?.basvuruSevkleri || rawData?.BasvuruSevkleri || [];
+  const sevkler = row.original.sevkler || [];
 
   const userRoleId = Number(auth?.rolId || auth?.roleId);
   const rawSube = auth?.subeId || auth?.SubeId;
@@ -180,44 +226,29 @@ export const CurrentStageBadge = ({
       auth?.masterAlanId || auth?.MasterAlanId || auth?.alanId || auth?.AlanId,
     ) || null;
 
-  const isBasvuruDetay =
-    rawData?.personel?.isBasvuruDetay ||
-    rawData?.Personel?.IsBasvuruDetay ||
-    {};
-  const basvuruSubeler =
-    isBasvuruDetay.basvuruSubeler || isBasvuruDetay.BasvuruSubeler || [];
-  const appliedBranchIds = basvuruSubeler.map((s) =>
-    Number(s.subeId || s.SubeId || s.id || s.Id),
-  );
+  const appliedBranchIds = row.original.appliedBranchIds || [];
   const hasAppliedToMyBranch = hasSpecificBranches
     ? allowedSubeIds.some((id) => appliedBranchIds.includes(id))
     : true;
 
   if (userRoleId === 6 && hasSpecificBranches && userDeptId) {
     const mySevkler = sevkler.filter((s) => {
-      const matchSube = allowedSubeIds.includes(Number(s.subeId || s.SubeId));
-      const sMasterDeptId = Number(
-        s.masterDepartmanId ||
-          s.MasterDepartmanId ||
-          s.departman?.masterDepartmanId ||
-          s.Departman?.MasterDepartmanId,
-      );
-      const sDirectDeptId = Number(s.departmanId || s.DepartmanId);
+      const matchSube = allowedSubeIds.includes(s.subeId);
+
       const matchDept =
-        userDeptId === sMasterDeptId || userDeptId === sDirectDeptId;
-      const sAlanId = Number(s.masterAlanId || s.MasterAlanId);
+        userDeptId === s.masterDepartmanId || userDeptId === s.departmanId;
+
       const matchAlan =
-        userAlanId && sAlanId && sAlanId !== 0 ? sAlanId === userAlanId : true;
+        userAlanId && s.masterAlanId && s.masterAlanId !== 0
+          ? s.masterAlanId === userAlanId
+          : true;
+
       return matchSube && matchDept && matchAlan;
     });
 
     if (mySevkler.length > 0) {
-      const isAllRejected = mySevkler.every(
-        (s) => Number(s.sevkDurumu || s.SevkDurumu) === 3,
-      );
-      const isAnyApproved = mySevkler.some(
-        (s) => Number(s.sevkDurumu || s.SevkDurumu) === 2,
-      );
+      const isAllRejected = mySevkler.every((s) => s.sevkDurumu === 3);
+      const isAnyApproved = mySevkler.some((s) => s.sevkDurumu === 2);
 
       if (isAllRejected)
         return (
@@ -237,12 +268,10 @@ export const CurrentStageBadge = ({
   if (isIKGroup) {
     if (hasSpecificBranches) {
       const myBranchSevkler = sevkler.filter((s) =>
-        allowedSubeIds.includes(Number(s.subeId || s.SubeId)),
+        allowedSubeIds.includes(s.subeId),
       );
       const otherBranchActiveSevks = sevkler.filter(
-        (s) =>
-          !allowedSubeIds.includes(Number(s.subeId || s.SubeId)) &&
-          Number(s.sevkDurumu || s.SevkDurumu) !== 3,
+        (s) => !allowedSubeIds.includes(s.subeId) && s.sevkDurumu !== 3,
       );
 
       if (
@@ -261,10 +290,7 @@ export const CurrentStageBadge = ({
       if (statusId !== 3 && statusId !== 4) {
         if (otherBranchActiveSevks.length > 0) {
           const firstOther = otherBranchActiveSevks[0];
-          const subeAdi =
-            firstOther.sube?.subeAdi ||
-            firstOther.Sube?.SubeAdi ||
-            "DİĞER ŞUBE";
+          const subeAdi = firstOther.subeAdi || "DİĞER ŞUBE";
           return (
             <span
               className="flex items-center justify-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-black uppercase whitespace-nowrap bg-amber-50 text-amber-600 border-amber-200 shadow-sm"
@@ -361,20 +387,11 @@ export const JobStartDateCell = ({ row }) => {
     row?.original?.statusId || row?.original?.basvuruDurum || 1,
   );
 
-  // 2. 🎯 Veriyi her ihtimale karşı arıyoruz (Backend CamelCase veya PascalCase dönmüş olabilir)
-  const rawData = row?.original?.originalData || row?.original || {};
   const tamamenReddedildiMi = Boolean(
-    row?.original?.tamamenReddedildiMi ??
-    row?.original?.TamamenReddedildiMi ??
-    rawData?.tamamenReddedildiMi ??
-    rawData?.TamamenReddedildiMi ??
-    false,
+    row.original.tamamenReddedildiMi ?? false,
   );
-  const dateStr =
-    row?.original?.iseBaslamaTarihi ||
-    row?.original?.IseBaslamaTarihi ||
-    rawData?.iseBaslamaTarihi ||
-    rawData?.IseBaslamaTarihi;
+
+  const dateStr = row.original.iseBaslamaTarihi || null;
 
   // 3. KURAL: Sadece "Devam Ediyor" (2) veya "Onaylandı" (3) olanlara tarihi göster
   const isEligibleToShow = statusId === 2 || statusId === 3;
